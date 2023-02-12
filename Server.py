@@ -8,48 +8,85 @@ import sys
 import threading
 import time
 
-################################### Socket Connection ###################################
-
-conn_list = []
-is_run_thread = True
-
-def server():
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:    # TCP
-        ServerInfo = ('127.0.0.1', 9999)
-        s.bind(ServerInfo)
-        s.listen()
-        print(f'Server is Listening on {ServerInfo}')
-        while True:
-            conn, addr = s.accept()
-
-            # Add Client To List
-            conn_list.append(conn)
-
-T = threading.Thread(target=server)
-T.daemon = True
-T.start()
-
 
 ################################### Video Stream ###################################
+class VideoHandler:
+    def __init__(self) -> None:
+        self.ret = False
+        self.frame = None
+        self.capture = None
 
-capture = cv2.VideoCapture(0)
+    def get_frame(self):
+        return self.ret, self.frame
 
-while capture.isOpened():
-    ret, frame = capture.read()
+    def start_capture(self):
+        self.capture = cv2.VideoCapture(0)
 
-    #cv2 to string
-    frame = imutils.resize(frame, width=640)
-    a = pickle.dumps(frame)
-    message = struct.pack("Q",len(a))+a
-    
-    for conn in conn_list:
-        conn.sendall(message)
+        while self.capture.isOpened():
+            self.ret, self.frame = self.capture.read()
 
-    cv2.imshow('Display', frame)
+            if self.ret == False:
+                continue
 
-    # Case Insensitive Check
-    if ord(chr(cv2.waitKey(1) & 0xFF).lower()) == ord('b'):
-        break
+            cv2.imshow('Server', self.frame)
+
+            # Case Insensitive Check
+            if ord(chr(cv2.waitKey(1) & 0xFF).lower()) == ord('b'):
+                break
+
+        self.capture.release()
+        cv2.destroyAllWindows()
+
+
+################################### Socket Connection ###################################
+class ServerTCP:
+    def __init__(self, ServerInfo) -> None:
+        self.ServerInfo = ServerInfo
+        self.conn_list = []
+
+    def start_services(self):
+        self.video_handler = VideoHandler()
+        T = threading.Thread(target=self.video_handler.start_capture)
+        T.daemon = True
+        T.start()
         
-capture.release()
-cv2.destroyAllWindows()
+
+    def start_server(self):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY)
+            s.bind(self.ServerInfo)
+            s.listen()
+            print(f'Server is Listening on {self.ServerInfo}')
+            while True:
+                conn, addr = s.accept()
+
+                # Add Client To List
+                self.conn_list.append(conn)
+
+                # Handle Client
+                T = threading.Thread(target=self.handle_client, args=(conn, addr))
+                T.start()
+
+    def handle_client(self, conn, addr):
+        print(f'{addr} connected to Server')
+        try:
+            while True:
+                ret, frame = self.video_handler.get_frame()
+                if ret:
+                    # Send frame to client
+                    self.unicast(conn, frame)
+        except:
+            self.conn_list.remove(conn)
+    
+    def unicast(self, conn, frame):
+        frame_bytes = self.convert_frame_to_bytes(frame)
+        conn.sendall(frame_bytes)
+
+    def convert_frame_to_bytes(self, frame):
+        adjframe = imutils.resize(frame, width=640)
+        d_frame = pickle.dumps(adjframe)
+        return struct.pack("Q",len(d_frame)) + d_frame
+
+s = ServerTCP(('127.0.0.1', 9999))
+s.start_services()
+s.start_server()

@@ -1,32 +1,54 @@
+import imutils
+import pickle
 import struct
 import cv2
+import numpy as np
 import socket
-import pickle
+import sys
+import threading
+import time
 
 
-HOST = "127.0.0.1"  # The server's hostname or IP address
-PORT = 9999  # The port used by the server
-payload_size = struct.calcsize("Q")
-data = b""
-s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-s.connect((HOST, PORT))
-while True:
-    while len(data) < payload_size:
-        packet = s.recv(4096)
-        if not packet: break
-        data += packet
-    packed_msg_size = data[:payload_size]
-    data = data[payload_size:]
-    msg_size = struct.unpack("Q",packed_msg_size)[0]
-        
-    while len(data) < msg_size:
-        data += s.recv(4096)
-    frame_data = data[:msg_size]
-    data  = data[msg_size:]
-    frame = pickle.loads(frame_data)
+class ClientTCP:
+    def __init__(self, ServerInfo: tuple[str, int]):
+        self.Limits = 4096
+        self.ServerInfo = ServerInfo
+        self.payload_size = struct.calcsize("Q")
+        self.data = b""
 
-    cv2.imshow('Client', frame)
-    key = cv2.waitKey(1) & 0xFF
-    if key  == ord('q'):
-        break
-s.close()
+    def connect_to_server(self) -> bool:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as self.s:
+            try:
+                self.s.connect(self.ServerInfo)
+                self.show_video_feed()
+            except:
+                print('Connection Failed, Server is Down')
+                time.sleep(1.5)
+        return False
+
+    def show_video_feed(self):
+        while True:
+            frame = self.fetch_and_convert_frames()
+
+            cv2.imshow('Client', frame)
+
+            # Case Insensitive Check
+            if ord(chr(cv2.waitKey(1) & 0xFF).lower()) == ord('b'):
+                break
+    
+    def fetch_and_convert_frames(self):
+        while len(self.data) < self.payload_size:
+            packet = self.s.recv(4096)
+            if not packet: break
+            self.data += packet
+        packed_msg_size = self.data[:self.payload_size]
+        self.data = self.data[self.payload_size:]
+        msg_size = struct.unpack("Q",packed_msg_size)[0]
+                
+        while len(self.data) < msg_size:
+            self.data += self.s.recv(1_048_576)
+        frame_data = self.data[:msg_size]
+        self.data  = self.data[msg_size:]
+        return pickle.loads(frame_data)
+
+ClientTCP(('127.0.0.1', 9999)).connect_to_server()
