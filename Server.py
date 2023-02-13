@@ -1,92 +1,57 @@
-import imutils
-import pickle
+import threading
+from VideoStream import VideoHandler
+import math
 import struct
 import cv2
-import numpy as np
 import socket
-import sys
-import threading
-import time
-
-
-################################### Video Stream ###################################
-class VideoHandler:
-    def __init__(self) -> None:
-        self.ret = False
-        self.frame = None
-        self.capture = None
-
-    def get_frame(self):
-        return self.ret, self.frame
-
-    def start_capture(self):
-        self.capture = cv2.VideoCapture(0)
-
-        while self.capture.isOpened():
-            self.ret, self.frame = self.capture.read()
-
-            if self.ret == False:
-                continue
-
-            cv2.imshow('Server', self.frame)
-
-            # Case Insensitive Check
-            if ord(chr(cv2.waitKey(1) & 0xFF).lower()) == ord('b'):
-                break
-
-        self.capture.release()
-        cv2.destroyAllWindows()
-
 
 ################################### Socket Connection ###################################
-class ServerTCP:
-    def __init__(self, ServerInfo) -> None:
-        self.ServerInfo = ServerInfo
-        self.conn_list = []
+class Server:
+    def __init__(self, server_info):
+        self.server_info = server_info
+        self.MAX_SIZE = (2**16) - 64
+        self.s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.s.bind(server_info)
 
-    def start_services(self):
         self.video_handler = VideoHandler()
         T = threading.Thread(target=self.video_handler.start_capture)
         T.daemon = True
         T.start()
-        
-
-    def start_server(self):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY)
-            s.bind(self.ServerInfo)
-            s.listen()
-            print(f'Server is Listening on {self.ServerInfo}')
-            while True:
-                conn, addr = s.accept()
-
-                # Add Client To List
-                self.conn_list.append(conn)
-
-                # Handle Client
-                T = threading.Thread(target=self.handle_client, args=(conn, addr))
-                T.start()
-
-    def handle_client(self, conn, addr):
-        print(f'{addr} connected to Server')
+    
+    def server_stuff(self):
         try:
             while True:
                 ret, frame = self.video_handler.get_frame()
-                if ret:
-                    # Send frame to client
-                    self.unicast(conn, frame)
-        except:
-            self.conn_list.remove(conn)
+                if ret == False:
+                    continue
+
+                bytesAddressPair = self.s.recvfrom(4096)
+                address = bytesAddressPair[1]
+                print(bytesAddressPair)
+
+                byte_arr = self.convert_frame_to_byte_arr(frame)
+
+                for frame_byte in byte_arr:
+                    self.s.sendto(frame_byte, address)
+                
+                print('SUCCESS')
+
+        except Exception as e:
+            print(e)
+            self.s.close()
     
-    def unicast(self, conn, frame):
-        frame_bytes = self.convert_frame_to_bytes(frame)
-        conn.sendall(frame_bytes)
+    def convert_frame_to_byte_arr(self, frame):
+        byte_arr = []
+        img_enc = cv2.imencode('.jpg', frame)[1]
+        data = img_enc.tostring()
+        size = len(data)
+        segments_count = math.ceil(size/(self.MAX_SIZE))
+        segment_start = 0
+        while segments_count:
+            segment_end = min(size, segment_start + self.MAX_SIZE)
+            byte_arr.append(struct.pack("B", segments_count) + data[segment_start:segment_end])
+            segment_start = segment_end
+            segments_count -= 1
+        return byte_arr
 
-    def convert_frame_to_bytes(self, frame):
-        adjframe = imutils.resize(frame, width=640)
-        d_frame = pickle.dumps(adjframe)
-        return struct.pack("Q",len(d_frame)) + d_frame
-
-s = ServerTCP(('127.0.0.1', 9999))
-s.start_services()
-s.start_server()
+s = Server(('127.0.0.1', 9999)).server_stuff()
