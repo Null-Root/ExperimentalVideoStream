@@ -40,15 +40,6 @@ class Client:
         except Exception as e:
             print(e)
             self.s.close()
-            
-    def dump_buffer(self):
-        """ Emptying buffer frame """
-        while True:
-            seg, addr = self.s.recvfrom(self.MAX_SIZE)
-            print(seg[0])
-            if struct.unpack("B", seg[0:1])[0] == 1:
-                print("finish emptying buffer")
-                break
 
 
 s = Client(('192.168.1.20', 12345)).client_stuff()
