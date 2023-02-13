@@ -25,7 +25,7 @@ class Server:
                 if ret == False:
                     continue
 
-                addr, msg = self.s.recvfrom(4096)
+                msg, addr = self.s.recvfrom(4096)
 
                 byte_arr = self.convert_frame_to_byte_arr(frame)
 
