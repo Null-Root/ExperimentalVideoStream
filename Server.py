@@ -25,16 +25,12 @@ class Server:
                 if ret == False:
                     continue
 
-                bytesAddressPair = self.s.recvfrom(4096)
-                address = bytesAddressPair[1]
-                print(bytesAddressPair)
+                addr, msg = self.s.recvfrom(4096)
 
                 byte_arr = self.convert_frame_to_byte_arr(frame)
 
                 for frame_byte in byte_arr:
-                    self.s.sendto(frame_byte, address)
-                
-                print('SUCCESS')
+                    self.s.sendto(frame_byte, addr)
 
         except Exception as e:
             print(e)
