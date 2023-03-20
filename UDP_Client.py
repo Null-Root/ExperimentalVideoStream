@@ -10,18 +10,20 @@ class UDPClient:
         self.server_info = server_info
         self.MAX_SIZE = 2 ** 16
         self.s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.s.settimeout(0.5)
+        self.s.settimeout(0.8)
     
     def clientProcess(self):
         while True:
             # Send a message to the server to receive a frame
             # Receive the frame data bytes from the server
+            # Loop until all bytes for the frame has been received
             byte_arr = []
             while True:
                 try:
                     self.s.sendto(b"send_frame", self.server_info)
                     data, addr = self.s.recvfrom(self.MAX_SIZE)
                     byte_arr.append(bytes(data))
+
                     # Check If End of Frame
                     if data == b'DONE':
                         break
@@ -29,7 +31,6 @@ class UDPClient:
                     print(ex)
                     continue
 
-            
             try:
                 # Decode bytes array to frame
                 frame =  self.convertBytesToFrame(byte_arr)
@@ -47,7 +48,8 @@ class UDPClient:
     
     def convertBytesToFrame(self, data_arr):
         frame_data = []
-
+        
+        # Loop all segments received
         for byte_data in data_arr:
             # Unpack the frame data
             segments_count = struct.unpack("B", byte_data[:1])[0]
@@ -61,6 +63,8 @@ class UDPClient:
         
         # Combine all bytes to a single frame byte
         frame_bytes = b"".join(frame_data)
+
+        # Decompress to get frame bytes
         frame_bytes = zlib.decompress(frame_bytes)
 
         # Decode the frame data to a numpy array
