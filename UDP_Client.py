@@ -9,10 +9,22 @@ class UDPClient:
     def __init__(self, server_info):
         self.server_info = server_info
         self.MAX_SIZE = 2 ** 16
-        self.s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.s.settimeout(0.8)
+        self.proc_client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     
-    def clientProcess(self):
+    def handleServer(self):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as main_client_socket:
+            main_client_socket.connect(self.server_info)
+            data = main_client_socket.recv(1024)
+            port_data = data.decode('utf-8')
+            return int(port_data)
+
+    
+    def startClient(self):
+        video_port = self.handleServer()
+        self.clientProcess(video_port)
+    
+    def clientProcess(self, video_port):
+        thr_server_info = (self.server_info[0], video_port)
         while True:
             # Send a message to the server to receive a frame
             # Receive the frame data bytes from the server
@@ -20,8 +32,8 @@ class UDPClient:
             byte_arr = []
             while True:
                 try:
-                    self.s.sendto(b"send_frame", self.server_info)
-                    data, addr = self.s.recvfrom(self.MAX_SIZE)
+                    self.proc_client_socket.sendto(b"_", thr_server_info)
+                    data, addr = self.proc_client_socket.recvfrom(self.MAX_SIZE)
                     byte_arr.append(bytes(data))
 
                     # Check If End of Frame
@@ -43,7 +55,7 @@ class UDPClient:
                 continue
 
         # Clean up
-        self.s.close()
+        self.proc_client_socket.close()
         cv2.destroyAllWindows()
     
     def convertBytesToFrame(self, data_arr):
@@ -51,6 +63,7 @@ class UDPClient:
         
         # Loop all segments received
         for byte_data in data_arr:
+
             # Unpack the frame data
             segments_count = struct.unpack("B", byte_data[:1])[0]
             frame_bytes = byte_data[1:]
@@ -70,4 +83,4 @@ class UDPClient:
         # Decode the frame data to a numpy array
         return cv2.imdecode(np.frombuffer(frame_bytes, dtype=np.uint8), cv2.IMREAD_COLOR)
 
-u = UDPClient(('127.0.0.1', 9999)).clientProcess()
+u = UDPClient(('127.0.0.1', 9999)).startClient()
