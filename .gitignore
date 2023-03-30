@@ -3,3 +3,4 @@
 /versions
 __pycache__/
 filesync_client.py
+filesync_lib.py
