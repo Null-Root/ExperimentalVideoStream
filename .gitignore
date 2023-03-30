@@ -2,3 +2,4 @@
 /tests
 /versions
 __pycache__/
+filesync_client.py
